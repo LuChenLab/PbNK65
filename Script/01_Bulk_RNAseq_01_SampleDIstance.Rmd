@@ -1,0 +1,66 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#1. loading package and data
+##1.1. 
+```{r}
+library("DESeq2")
+library("ggplot2")
+library("dplyr")
+library("plyr")
+library("magrittr")
+library("ggalt")
+library("ComplexHeatmap")
+library("RColorBrewer")
+```
+##1.2. 
+```{r}
+sampleTable <- readRDS("../01_Data/01_Bulk_SampleTable.Rds")
+Matrix <- readRDS("../01_Data/01_Bulk_Matrix.Rds")
+```
+
+#2. DEseq2
+```{r}
+dds <- DESeqDataSetFromMatrix(countData = Matrix,colData = sampleTable, design = ~ Group)
+dds <- dds[ rowSums(counts(dds)) > 10, ]
+rld <- rlog(dds,blind=FALSE)
+```
+
+#3. sample distance 
+##3.1. 
+```{r,fig.width=5.5,fig.height=5}
+#
+pcaData <- plotPCA(rld, intgroup = c("Group"), returnData = TRUE,ntop=10000)
+percentVar <- round(100 * attr(pcaData, "percentVar"))
+
+#
+ggplot(pcaData) +
+  geom_point(mapping = aes(x = PC1, y = PC2, color =Group),size =3) +
+  xlab(paste0("PC1: ", percentVar[1], "% variance")) +
+  ylab(paste0("PC2: ", percentVar[2], "% variance")) +
+  theme_bw() + ggsci::scale_colour_startrek()+theme(legend.position = "top")+guides(color=guide_legend(nrow = 1))+
+  theme(legend.title = element_blank(),legend.text = element_text(size = 14),
+        axis.text = element_text(size = 12),axis.title = element_text(size = 12),
+        panel.grid =  element_blank()
+        )+
+  geom_smooth(data = pcaData,mapping = aes(x=PC1,y=PC2),se=FALSE,fill="grey",color="black",alpha=.1,linetype=2)+
+  geom_encircle(aes(x = PC1, y = PC2, group = Group, color = Group), expand = 0.05, size = 1)+scale_y_reverse()
+```
+##3.2.
+```{r,fig.width=6,fig.height=5}
+#
+sampleDists <- dist(t(assay(rld)),method="euclidean")  #  "euclidean" "maximum" "manhattan"
+sampleDistMatrix <- as.matrix(sampleDists)
+colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
+#
+ComplexHeatmap::Heatmap(sampleDistMatrix,col = colors,show_column_names = F,
+                        row_split = colData(dds)$Group,column_split=colData(dds)$Group,
+                        border = T,show_row_names = F
+                          )
+```
