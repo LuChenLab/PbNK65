@@ -13,7 +13,7 @@ The project includes raw count matrices and R scripts to analyze bulk RNA-seq, s
 - **01_Bulk_DEGs.Rds, 01_Bulk_Matrix.Rds, 01_Bulk_SampleTable.Rds**: Bulk RNA-seq data matrices, including differential gene expression analysis and sample information.
 - **01_biomart_hom_mus_gene.Rds**: Gene annotation data from Biomart, including homologous gene information for _Mus musculus_.
 - **02_01_scedata.Rds, 02_01_scedata_Normaldata.Rds, 02_01_scedata_PCA.Rds, 02_01_scedata_UMAP.Rds**: Single-cell RNA-seq data, including normalized data and dimensionality reduction (PCA, UMAP) results.
-- **03_01_Infect.Rds, 03_01_Infect_Ifngr1KO.Rds, 03_01_Uninfect.Rds**: scRNA-seq data of infected, Ifngr1KO, and uninfected samples for comparative analysis.
+- **03_01_Infect.Rds, 03_01_Infect_Ifngr1KO.Rds, 03_01_Uninfect.Rds**: Spatial transcriptomics data of infected, Ifngr1KO, and uninfected samples for comparative analysis.
 
 ---
 
