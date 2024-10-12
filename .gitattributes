@@ -1,0 +1,4 @@
+*.Rds filter=lfs diff=lfs merge=lfs -text
+*.Rds linguist-language=R
+*.Rmd linguist-language=R
+*.csv filter=lfs diff=lfs merge=lfs -text
