@@ -1,0 +1,186 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#1. loading package and data
+##1.1. 
+```{r}
+library("DESeq2")
+library("data.table")
+library("magrittr")
+library("DT")
+library('org.Mm.eg.db')
+library('clusterProfiler')
+library('enrichplot')
+library("ggrastr")
+library("rtracklayer")
+library("ggrepel")
+library("GSEABase")
+library("GseaVis")
+library("ggplot2")
+library("RColorBrewer")
+```
+##1.2. 
+```{r}
+sampleTable <- readRDS("../01_Data/01_Bulk_SampleTable.Rds")
+Matrix <- readRDS("../01_Data/01_Bulk_Matrix.Rds")
+#
+dds <- DESeqDataSetFromMatrix(countData = Matrix,colData = sampleTable, design = ~ Group)
+dds <- dds[ rowSums(counts(dds)) > 10, ]
+dds_res <- DESeq(dds)
+```
+
+#2. differential expression genes analysis
+##2.1. 
+```{r}
+DE_res <- lapply(c("D3","D5","D7","D9","D11","D13"),function(x){
+  #
+  DE_all <- results(dds_res, contrast = c("Group", x, "D0"))%>%as.data.frame()
+  DE_all$ENSEMBEL <- rownames(DE_all)
+  DE_all%<>%as.data.table()
+  #
+  DE_all$SYMBOL<-mapIds(org.Mm.eg.db,
+                        keys=DE_all$ENSEMBEL,
+                        column="SYMBOL",
+                        keytype="ENSEMBL",
+                        multiVals="first")
+  DE_all$ENTREZID <- mapIds(org.Mm.eg.db,
+                         keys=DE_all$ENSEMBEL,
+                         column="ENTREZID",
+                         keytype="ENSEMBL",
+                         multiVals="first")
+  DE_all$cluster <- paste0(x,"vsD0")
+  return(DE_all)
+}
+)
+DE_res <- do.call(rbind,DE_res)
+DE_res$cluster <- gsub("D0","N",DE_res$cluster)
+DE_res$cluster <- factor(DE_res$cluster,levels = c("D3vsN","D5vsN","D7vsN","D9vsN","D11vsN","D13vsN"))
+# 
+DE_res%<>%mutate(
+  Type=case_when(
+    padj < 0.05 & log2FoldChange >  2 ~ "Up",
+    padj < 0.05 & log2FoldChange < -2 ~ "Down",
+    TRUE ~ "NoSig"
+  )
+)
+saveRDS(DE_res,"../01_Data/01_Bulk_DEGs.Rds")
+```
+
+#3. volcano plot
+```{r,fig.width=17,fig.height=3.7}
+#
+Plot <- subset(DE_res,!is.na(DE_res$padj))
+Plot_anno <- split(Plot,Plot$cluster)
+Plot_anno <- lapply(Plot_anno,function(x){
+  setorder(x,padj)
+  Up <- x[head(which(x$Type=="Up"),n=5),]
+  Down <- x[head(which(x$Type=="Down"),n=5),]
+  x <- rbind(Up,Down)
+  return(x)
+}
+)
+Plot_anno <- do.call(rbind,Plot_anno)
+#
+ggplot(Plot)+
+  geom_point_rast(aes(x=log2FoldChange,y=-log10(padj),color=Type),size=.5)+
+  facet_grid(.~cluster,scales = "free")+
+  geom_text_repel(data = Plot_anno[Type=="Up"],aes(x=log2FoldChange,y=-log10(padj),label=SYMBOL),
+                   nudge_x = 100,   # 标签在x轴上的起始位置，与x轴的数据单位相同
+                   direction = "y",  # 排列方向
+                   force = 1,
+                   nudge_y = 0.00001,
+                   hjust= 1,size=5
+                  )+
+  geom_text_repel(data = Plot_anno[Type=="Down"],aes(x=log2FoldChange,y=-log10(padj),label=SYMBOL),
+                   nudge_x = -100,   # 标签在x轴上的起始位置，与x轴的数据单位相同
+                   direction = "y",  # 排列方向
+                   force = 10,
+                   hjust= 1,size=5,
+                   box.padding = unit(.1,"cm")
+                  )+
+  scale_color_manual(values = c("Up"="red","Down"="blue","NoSig"="grey"))+
+  theme_bw()+
+  theme(panel.grid = element_blank(),strip.background.x = element_blank(),strip.text.x = element_text(size = 13),
+        axis.text = element_text(size = 13),axis.title = element_text(size = 13),legend.position = "none"
+        )
+```
+
+#4. DEGs number
+```{r,fig.width=5,fig.height=4}
+Plot_data <- table(DE_res$Type,DE_res$cluster)%>%as.data.frame()
+Plot_data%<>%as.data.table()
+colnames(Plot_data) <- c("Type","Group","Number")
+#
+Plot_data <- subset(Plot_data,Type!="NoSig")
+Plot_data$Type%<>%as.character()
+Plot_data$Type <- factor(Plot_data$Type,levels = c("Up","Down"))
+Plot_data$Pos <- Plot_data$Number
+Plot_data$Pos_label <- Plot_data$Number+30
+#
+Plot_data$Pos[which(Plot_data$Type=="Down")] <- Plot_data$Pos[which(Plot_data$Type=="Down")]*-1
+Plot_data$Pos_label[which(Plot_data$Type=="Down")] <- Plot_data$Pos_label[which(Plot_data$Type=="Down")]*-1
+#
+
+ggplot(Plot_data)+geom_bar(aes(x=Group,y=Pos,fill=Type),stat = "identity")+
+  scale_fill_brewer(palette = "Set1")+theme_bw()+
+  xlab("")+ylab("Gene numbers")+
+  theme(panel.grid = element_blank(),axis.text = element_text(size = 12),
+        axis.title.y = element_text(size = 14),legend.position = c(.1,.85))+
+  geom_text(aes(x=Group,y=Pos_label,label=Number),size=5)+
+  scale_y_continuous(labels = c(1000,600,200,0,200),breaks = c(1000,600,200,0,-200))
+```
+
+#5. Enrich
+##5.1.
+```{r}
+GENE <- DE_res[Type!="NoSig"]
+GENE <- lapply(c("D3vsN","D5vsN","D7vsN","D9vsN","D11vsN","D13vsN"),function(x){
+  Genename <- GENE[cluster==x]
+  Genename <- Genename$SYMBOL[!is.na(Genename$SYMBOL)]
+  return(Genename)
+}
+)
+names(GENE) <- c("D3vsN","D5vsN","D7vsN","D9vsN","D11vsN","D13vsN")
+Go <- compareCluster(geneClusters = GENE,fun="enrichGO",OrgDb='org.Mm.eg.db',keyType = "SYMBOL",ont= "BP")
+GO_simple <- clusterProfiler::simplify(Go)
+```
+##5.2.
+```{r,fig.width=8.5,fig.height=8}
+GO_simple@compareClusterResult <- GO_simple@compareClusterResult[
+  -which(GO_simple@compareClusterResult$Description%in%c("defense response to bacterium","nuclear division","nuclear chromosome segregation",
+                                                         "chromosome segregation","defense response to virus","response to virus",
+                                                         "cellular response to interferon-beta","mitotic sister chromatid segregation")),]
+#
+Data <- enrichplot::dotplot(GO_simple, showCategory=4,font.size=8,includeAll=F)
+Data <- Data$data
+#
+ggplot(Data)+geom_point(aes(x=Cluster,y=Description,color=-log10(p.adjust),size=GeneRatio))+
+  xlab("")+ggtitle("GO(BP)")+ylab("")+theme_bw()+
+  theme(axis.text.x = element_text(size = 10,angle = 45,hjust = .9,vjust = .9),
+        axis.text.y = element_text(size = 12),plot.title = element_text(hjust = .5,size = 20))+
+  scale_color_gradientn(colours = c("#67001F","#B2182B","#D6604D","#F4A582","#FDDBC7","#F7F7F7","#D1E5F0","#92C5DE","#4393C3")%>%rev())+
+  scale_radius(range = c(5,8))
+```
+
+#6. GSEA
+##6.1. 
+```{r}
+D7 <- subset(DE_res,cluster=="D7vsN")
+setorder(D7,-log2FoldChange)
+D7 <- subset(D7,!is.na(ENTREZID))
+#
+genelist <-  D7$log2FoldChange
+names(genelist) <-  D7$ENTREZID
+GSEA <- gseGO(genelist,OrgDb = "org.Mm.eg.db",keyType = "ENTREZID")
+```
+##6.2.
+```{r,fig.width=5,fig.height=5}
+gseaNb(object = GSEA,geneSetID = grep("^interferon-gamma production$",GSEA@result$Description,ignore.case = T))  
+```
+

@@ -1,0 +1,191 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#1. loading data and package
+##1.1. 
+```{r}
+library(Seurat)
+library(ggplot2)
+library(data.table)
+library(magrittr)
+library(ggpubr)
+library(ggrepel)
+library(dior)
+library(patchwork)
+library(SeuratDisk)
+library(readr)
+library(spacexr)
+library(dplyr)
+library(ggalluvial)
+```
+##1.2. 
+```{r,fig.width=12,fig.height=4}
+sce.big <- readRDS("../01_Data/03_01_CCA_Allsample.Rds")
+DefaultAssay(sce.big) <- "SCT"
+#
+sce.big@meta.data%<>%mutate(
+  Region = case_when(
+    integrated_snn_res.0.2 == 0 ~"Region1",
+    integrated_snn_res.0.2 == 1 ~"Region2",
+    integrated_snn_res.0.2 == 2 ~"Region3",
+    integrated_snn_res.0.2 == 3 ~"Region4",
+    integrated_snn_res.0.2 == 4 ~"Region5",
+    integrated_snn_res.0.2 == 5 ~"Region6",
+    integrated_snn_res.0.2 == 6 ~"Region7",
+    integrated_snn_res.0.2 == 7 ~"Region8",
+    integrated_snn_res.0.2 == 8 ~"Region9",
+    integrated_snn_res.0.2 == 9 ~"Region10"
+  )
+)
+sce.big$Region <- factor(sce.big$Region,levels = c("Region1","Region2","Region3","Region4","Region5","Region6","Region7","Region8","Region9","Region10"))
+Idents(sce.big) <- "Region"
+```
+##1.3. 
+```{r}
+ref <- readRDS("/mnt/raid61/Personal_data/yangqingxin/project/Plasmodium_chenshasha/Github/01_Data/02_01_scedata.Rds")
+Data  <- readRDS("/mnt/raid61/Personal_data/yangqingxin/project/Plasmodium_chenshasha/Github/01_Data/02_01_scedata_Normaldata.Rds")
+ref@assays$RNA@data <- Data
+ref@assays$integrated <- ref@assays$RNA
+ref <- subset(ref,Celltype%in%c("Bcells","Tcells","NKs","Neutros","DCs","Monos","Macros","AMs"))
+ref$Celltype%<>%as.character()
+ref$Celltype <- factor(ref$Celltype,levels = c("Bcells","Tcells","NKs","Neutros","DCs","Monos","Macros","AMs"))
+```
+
+#2. RCTD
+##2.1. 
+```{r}
+Spatial_obj <- lapply(c("WT","Infect","Infect_IfngrKO"),function(x){
+#
+Obj <- subset(sce.big,orig.ident == x)
+#
+coords <- Obj@images[[x]]@coordinates
+coords <- coords[,c("row","col")]
+colnames(coords) <- c("x","y")
+#
+counts <- Obj@assays$SCT@counts
+#
+nUMI <- Obj$nCount_SCT
+stopifnot(colnames(counts)==names(nUMI))
+
+#
+Spatial_obj <- SpatialRNA(coords = coords,
+                          counts = counts,
+                          nUMI=nUMI
+                            )
+return(Spatial_obj)
+}
+)
+names(Spatial_obj) <- c("WT","Infect","Infect_IfngrKO")
+```
+##2.2. 
+```{r}
+#
+Celltype <- ref$Celltype%>%as.character()
+names(Celltype) <- colnames(ref)
+Celltype <- factor(Celltype,levels = ref$Celltype%>%levels())
+#
+reference <- Reference(counts = ref@assays$RNA@counts,cell_types = Celltype ,nUMI = ref$nCount_RNA)
+```
+##2.3.  
+```{r}
+Spatial_obj <- lapply(Spatial_obj,function(x){
+  myRCTD <- create.RCTD(spatialRNA = x, reference = reference, max_cores = 10,CELL_MIN_INSTANCE = 2)
+  return(myRCTD)
+}
+)
+```
+##2.4. 
+```{r}
+RCTD <- lapply(Spatial_obj,function(x){
+RCTD <- run.RCTD(x, doublet_mode = 'full')  
+return(RCTD)
+}
+)
+#
+names(RCTD) <- c("WT","Infect","Infect_IfngrKO")
+```
+
+#3. analysis of RCTD
+##3.1. 
+```{r}
+WT <- RCTD$WT@results$weights
+Infect <- RCTD$Infect@results$weights
+Infect_IfngrKO <- RCTD$Infect_IfngrKO@results$weights
+#
+Data <- do.call(rbind,list(WT,Infect,Infect_IfngrKO))
+rm(WT,Infect,Infect_IfngrKO)
+Data <- Data[colnames(sce.big),]
+stopifnot(rownames(Data)==colnames(sce.big))
+sce.big@meta.data <- cbind(sce.big@meta.data,Data)
+```
+##3.2. 
+###3.2.1. 
+```{r,fig.width=6,fig.height=3.8}
+Plot_data <- sce.big@meta.data[,c("Region","Bcells","Tcells","NKs","Neutros","DCs","Monos","Macros","AMs","orig.ident")]
+Plot_data%<>%melt()
+Plot_data%<>%as.data.table()
+Plot_data <- Plot_data[Region=="Region2"]
+#
+ggplot(Plot_data,aes(x=variable,y=value))+geom_violin(aes(fill=orig.ident),scale = "width")+
+  stat_summary(aes(group=orig.ident),position = position_dodge(.9),size=.2)+
+  scale_fill_manual(values = c("#E4B54D", "#82B368", "#AEE6D6"))+
+  theme_bw()+theme(panel.grid = element_blank())+
+  stat_compare_means(aes(group = variable), comparisons = list(c("Infect", "Infect_IfngrKO")), method = "wilcox.test")
+```
+###3.2.2.  
+```{r,fig.width=10,fig.height=3.8}
+Plot_data <- sce.big@meta.data[,c("Region","Bcells","Tcells","NKs","Neutros","DCs","Monos","Macros","AMs","orig.ident")]
+Plot_data%<>%melt()
+Plot_data%<>%as.data.table()
+#
+ggplot(Plot_data,aes(x=variable,y=value))+geom_violin(aes(fill=Region),scale = "width")+
+  stat_summary(aes(group=Region),position = position_dodge(.9),size=.1)+
+  scale_fill_manual(values =  c("#C497B2","#D8383A","#14517C", "#E7EFFA", "#96C37D", "#F3D266", "#2F7FC1", "#F8F3F9","#A9B8C6","#F7E1ED"))+
+  theme_bw()+theme(panel.grid = element_blank())
+```
+##3.3.
+```{r,fig.width=4,fig.height=4}
+Plot_data <- sce.big@meta.data%>%as.data.table()
+Plot_data$Type <- "Separation"
+Plot_data$Type[which(Plot_data$Tcells > mean(Plot_data$Tcells) & Plot_data$Monos > mean(Plot_data$Monos) )] <- "Colocate"
+Plot_data <- Plot_data[Region=="Region2"]
+#
+plot_data <- table(Plot_data$orig.ident,Plot_data$Type)%>%as.data.frame()
+colnames(plot_data) <- c("group","X","value")
+plot_data$group <- factor(plot_data$group,levels = c("WT","Infect","Infect_IfngrKO"))
+plot_data%<>%as.data.table()
+
+#
+plot_data_test <- plot_data
+plot_data_test <- dcast(plot_data_test,group~X)
+plot_data_test%<>%as.data.frame()
+rownames(plot_data_test) <- plot_data_test$group
+plot_data_test <- plot_data_test[,-1]
+P <- chisq.test(plot_data_test)
+P <- P$p.value
+
+#
+plot_data <- plot_data[,.(Ratio=value/sum(value),X=X),by=.(group)]
+ggplot(plot_data, aes(x =group, y= Ratio, fill = X,
+                  stratum=X, alluvium=X)) + 
+  geom_col(width = 0.6, color='black')+
+  geom_flow(width=0.6,alpha=0.3, knot.pos=0)+
+  theme_classic() +
+  labs(x='Sample',y = 'Ratio')+
+   scale_fill_manual(values = c("#F79927","#2F5763"))+
+  scale_x_discrete(expand = c(0.05,0.05))+
+  theme(legend.title = element_blank())+
+  scale_y_continuous(expand = c(0,0),breaks = c(0.00,0.25,0.5,.75,1),labels = c("0%","25%","50%","75%","100%"))+
+  xlab("")+ylab("Cell percentage(%)")+
+  theme(axis.text.x =  element_text(size =14,angle = 45,hjust = .9,vjust = .9,color="black"),axis.text.y =  element_text(size =12,color="black"),axis.title = element_text(size = 15))
+```
+
+
+
+

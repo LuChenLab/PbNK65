@@ -1,0 +1,82 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#1. loading package and data
+##1.1. 
+```{r}
+library("DESeq2")
+library("ggplot2")
+library("data.table")
+library("xCell")
+library("dplyr")
+library("org.Mm.eg.db")
+library("magrittr")
+library("ggsci")
+library("plyr")
+```
+##1.2. 
+```{r}
+sampleTable <- readRDS("../01_Data/01_Bulk_SampleTable.Rds")
+Matrix <- readRDS("../01_Data/01_Bulk_Matrix.Rds")
+dds <- DESeqDataSetFromMatrix(countData = Matrix,colData = sampleTable, design = ~ Group)
+dds <- dds[ rowSums(counts(dds)) > 10, ]
+```
+##1.3.
+```{r}
+GeneNio <- readRDS("../01_Data/01_biomart_hom_mus_gene.Rds")
+GeneNio%<>%as.data.table()
+setkey(GeneNio,MGI.symbol)
+```
+
+#2. Xcell 
+##2.1.
+```{r}
+expression_matrix <- assay(dds)
+Gene <- mapIds(org.Mm.eg.db,keys=rownames(expression_matrix),column="SYMBOL",keytype="ENSEMBL",multiVals="first")
+Gene <- data.frame(
+ ENSEMBLE = names(Gene),
+ SYMBOL = Gene%>%as.character()
+)
+#
+Gene <- subset(Gene ,!is.na(SYMBOL))
+RemoveGene <- which((table(Gene$SYMBOL))>=2)%>%names()
+Gene <- Gene[-which(Gene$SYMBOL%in%RemoveGene),]
+Gene$Hum <- GeneNio[Gene$SYMBOL]$HGNC.symbol
+Gene <- Gene[-which(is.na(Gene$Hum)),]
+#
+expression_matrix <- expression_matrix[Gene$ENSEMBLE,]
+rownames(expression_matrix) <- Gene$Hum
+```
+##2.2.
+```{r}
+scores <-  xCellAnalysis(expression_matrix)
+#
+DF <- scores
+DF%<>%as.data.frame()
+DF$Celltype <- rownames(DF)
+DF <- melt(DF)
+DF$Group <- gsub("_.*$","",DF$variable)
+DF$Group <- factor(DF$Group,levels = c("D0","D3", "D5","D7","D9","D11","D13"))
+DF%<>%as.data.table()
+DF$Order <- DF$Group
+DF$Order <- mapvalues(DF$Order,from = c("D0","D3", "D5","D7","D9","D11","D13"),to = c(1:7))
+DF$Order%<>%as.numeric()
+```
+##2.3.
+```{r,fig.width=5,fig.height=4}
+ggplot(DF[Celltype=="ImmuneScore"],aes(x=Group,color=Group,y=value))+
+  geom_boxplot(alpha=.8)+
+  ggplot2::geom_point()+
+  theme_bw()+ylab("ImmuneScore")+xlab("")+ ggsci::scale_color_startrek()+
+  theme(panel.grid = element_blank(),axis.text = element_text(size = 15),strip.text.x = element_text(size = 15),
+        strip.background = element_blank(),legend.position = "none"
+  )
+```
+
+

@@ -1,0 +1,303 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#1. loading package and data
+##1.1.
+```{r}
+library("Mfuzz")
+library("DESeq2")
+library("clusterProfiler")
+library("org.Mm.eg.db")
+library("magrittr")
+library("data.table")
+library("ggplot2")
+library("dplyr")
+library("ggpubr")
+library("RobustRankAggreg")
+library("ggrepel")
+library("ComplexHeatmap")
+```
+##1.2. 
+```{r}
+sampleTable <- readRDS("../01_Data/01_Bulk_SampleTable.Rds")
+Matrix <- readRDS("../01_Data/01_Bulk_Matrix.Rds")
+#
+dds <- DESeqDataSetFromMatrix(countData = Matrix,colData = sampleTable, design = ~ Group)
+dds <- dds[ rowSums(counts(dds)) > 10, ]
+dds_res <- DESeq(dds)
+```
+
+#2. Mfuzz
+##2.1. 
+```{r}
+ExpressionData <- counts(dds_res,normalized=T)
+GeneInfo <- data.table(
+  ENSEMBL = rownames(ExpressionData),
+  SYMBOL  = rownames(ExpressionData)
+)
+GeneInfo$SYMBOL <- mapIds(org.Mm.eg.db,keys=GeneInfo$ENSEMBL,column="SYMBOL",keytype="ENSEMBL",multiVals="first")
+GeneInfo <- subset(GeneInfo,!is.na(GeneInfo$SYMBOL))
+#
+ExpressionData <- ExpressionData[GeneInfo$ENSEMBL,]
+rownames(ExpressionData) <- GeneInfo$SYMBOL
+ExpressionData%<>%as.data.frame()
+ExpressionData$Gene <- rownames(ExpressionData)
+ExpressionData%<>%melt()
+#
+ExpressionData$Group <- gsub("_.*$","",ExpressionData$variable)
+ExpressionData%<>%as.data.table()
+#
+ExpressionData <- ExpressionData[,.(Expression=mean(value)),by=.(Gene,Group)]
+ExpressionData%<>%dcast(formula = Gene~Group)
+ExpressionData%<>%as.data.frame()
+rownames(ExpressionData) <- ExpressionData$Gene
+ExpressionData <- ExpressionData[,c("D0","D3","D5","D7","D9","D11","D13")]
+#
+ExpressionData%<>%as.matrix()
+ExpressionData <- ExpressionData[which(rowSums(ExpressionData)>0),]
+```
+##2.2. 
+```{r}
+df <- new("ExpressionSet", exprs = ExpressionData)
+df <- standardise(df)
+m <- mestimate(df)
+set.seed(100)
+cl <- mfuzz(df, c = 12, m = m)
+```
+##2.3. 
+```{r,fig.width=14,fig.height=5}
+mfuzz.plot(eset = df,cl = cl,mfrow=c(2,6),new.window = FALSE,time.labels=c("D0","D3","D5","D7","D9","D11","D13"))
+```
+
+#3. adjust Mfuzz results
+##3.1 
+```{r,fig.width=18,fig.height=8}
+Make_mfuzz_data <- function(cl,df){
+  #
+  cluster_DT <- data.table(Cluster=cl$cluster%>%as.character(),Gene_name=cl$cluster%>%names%>%as.character())
+  setkey(cluster_DT,Gene_name)
+  
+  #
+  plot_data <- df@assayData$exprs%>%as.data.frame()
+  plot_data$Gene_name <- rownames(plot_data)
+  plot_data%<>%as.data.table()
+  plot_data <- melt(plot_data,id.vars=c("Gene_name"))
+  setnames(plot_data,old = c("variable","value"),new = c("Time","Expression"))
+  plot_data$Cluster <- cluster_DT[plot_data$Gene_name]$Cluster
+  
+  #
+  membership_DT <- cl$membership%>%as.data.frame()
+  cluster <- cl$cluster%>%as.numeric()
+  extract_mem <- function(x,y){
+    z <- membership_DT[x,y]%>%as.numeric()
+    return(z)
+  }
+  membership <-  mapply(extract_mem,c(1:length(cluster)),cluster)
+  membership_DT <- data.table(Gene_name=rownames(membership_DT),Membership=membership)
+  setkey(membership_DT,Gene_name)
+    
+  plot_data$Membership <- membership_DT[plot_data$Gene_name]$Membership
+  plot_data%<>%as.data.table()
+  return(plot_data)
+}
+```
+##3.2. 
+```{r,fig.width=18,fig.height=8}
+#
+plot_data <- Make_mfuzz_data(cl=cl,df=df)
+plot_data$color <- rep("grey",nrow(plot_data))
+#
+plot_data[Membership>=0.75]$color <- "red"
+plot_data$Time <- gsub("D0","N",plot_data$Time)
+#
+plot_data$Cluster <- factor(plot_data$Cluster,levels = c("1","2","3","4","5","6","7","8","9","10","11","12"))
+#
+plot_data%<>%dplyr::mutate(Cluster_new=case_when(
+  Cluster=="1"~"Cluster4 (291)",
+  Cluster=="2"~"Cluster11 (26)",
+  Cluster=="3"~"Cluster7 (145)",
+  Cluster=="4"~"Cluster1 (557)",
+  Cluster=="5"~"Cluster5 (258)",
+  Cluster=="6"~"Cluster6 (147)",
+  Cluster=="7"~"Cluster12 (14)",
+  Cluster=="8"~"Cluster10 (45)",
+  Cluster=="9"~"Cluster2 (505)",
+  Cluster=="10"~"Cluster3 (313)",
+  Cluster=="11"~"Cluster9 (47)",
+  Cluster=="12"~"Cluster8 (114)",
+))
+plot_data$Cluster_new <- factor(plot_data$Cluster_new,
+levels = c("Cluster1 (557)","Cluster2 (505)","Cluster3 (313)","Cluster4 (291)","Cluster5 (258)","Cluster6 (147)",
+           "Cluster7 (145)","Cluster8 (114)","Cluster9 (47)","Cluster10 (45)","Cluster11 (26)","Cluster12 (14)"))
+#
+plot_data <- plot_data%>%unique()
+```
+##3.3 
+###3.3.1 
+```{r}
+setorder(plot_data,Cluster_new)
+plot_data <- split(plot_data,plot_data$Cluster_new)
+plot_data <- lapply(plot_data,function(x){
+  setorder(x,Membership)
+  x$Gene_name <- factor(x$Gene_name,levels = x$Gene_name%>%unique())
+  return(x)
+})
+plot_data <- do.call(rbind,plot_data)
+plot_data$Time <- factor(plot_data$Time,levels = c("N","D3","D5","D7","D9","D11","D13"))
+plot_data_plot <- subset(plot_data,plot_data$Membership>0.45)
+```
+###3.3.2 
+```{r,fig.width=25,fig.height=14}
+p <- ggplot(plot_data_plot,aes(x=Time,y=Expression))+
+  geom_line(aes(group=Gene_name,color=Membership),size=.5)+
+  theme_classic2()+theme(legend.position = "none")+xlab("")+
+  scale_x_discrete(expand = c(0.1,0))+
+  scale_color_distiller(palette = "RdBu")+
+  facet_wrap(.~Cluster_new,ncol=4)+
+  theme(axis.text.x = element_text(angle = 45,vjust = .9,hjust = .9))+
+  theme(axis.text.x = element_text(size=20))+
+  theme(strip.text = element_text(size=25),legend.position = "none")+
+  theme(axis.text.y = element_text(size=15),axis.title.y = element_text(size=25))
+p
+```
+#4. Enrich
+##4.1. 
+```{r}
+Genelist <- subset(plot_data,plot_data$Membership>0.75)
+Genelist <- split(Genelist,Genelist$Cluster_new)
+Genelist <- lapply(Genelist,function(x){
+  y <- x$Gene_name%>%unique()
+  return(y)
+})
+#
+names(Genelist) <- gsub(" .*$","",names(Genelist))
+names(Genelist) <- gsub("luster","",names(Genelist))
+#
+Genelist <- lapply(Genelist,function(x){
+x%<>%as.character()
+y <- mapIds(org.Mm.eg.db,keys=x, column="ENTREZID",keytype="SYMBOL",multiVals="first")
+y <- subset(y,!is.na(y))
+y%<>%as.character()
+return(y)
+}
+)
+```
+##4.2. 
+###4.2.1. 
+```{r}
+Go <- compareCluster(Genelist,fun="enrichGO", OrgDb='org.Mm.eg.db',keyType = "ENTREZID",ont= "BP")
+Go_sim <- clusterProfiler::simplify(Go)
+```
+###4.2.2. 
+```{r,fig.width=9,fig.height=6}
+Data <- Go_sim@compareClusterResult
+Data <- Data[c(
+  grep("immune",Data$Description),
+  grep("T cell",Data$Description),
+  grep("lymphocyte",Data$Description,ignore.case = T),
+  grep("interferon",Data$Description)
+  ),]
+#
+Data <- Data[-grep("tumor",Data$Description),]
+Data <- Data[-grep("based on somatic",Data$Description),]
+Go_sim@compareClusterResult <- Data 
+Data <- enrichplot::dotplot(Go_sim, showCategory=4,font.size=8,includeAll=F)
+Data <- Data$data
+#
+ggplot(Data)+geom_point(aes(x=Cluster,y=Description,color=-log10(p.adjust),size=GeneRatio))+
+  xlab("")+ggtitle("GO(BP)")+ylab("")+theme_bw()+
+  theme(axis.text.x = element_text(size = 12),
+        axis.text.y = element_text(size = 12),plot.title = element_text(hjust = .5,size = 20))+
+  scale_color_gradientn(colours = c("#67001F","#B2182B","#D6604D","#F4A582","#FDDBC7","#F7F7F7","#D1E5F0","#92C5DE","#4393C3")%>%rev())+
+  scale_radius(range = c(5,8))
+```
+
+#5. Finding candidate using RRA
+##5.1. 
+```{r}
+Cluster3 <- plot_data[Cluster_new=="Cluster3 (313)"]
+Cluster3 <- subset(Cluster3,Membership>0.75)
+Cluster3 <- Cluster3[,c("Gene_name","Cluster_new")]%>%unique()
+```
+##5.2.
+```{r}
+DE_res <- readRDS("../01_Data/01_Bulk_DEGs.Rds")%>%as.data.table()
+```
+##5.3. 
+###5.3.1. 
+```{r}
+Genelist <- lapply(c("D3vsN","D5vsN","D7vsN","D9vsN","D11vsN","D13vsN"),function(x){
+  Genelist <- DE_res[cluster==x]
+  Genelist <- subset(Genelist,Genelist$padj<0.01) #
+  setorder(Genelist,-log2FoldChange)
+  Genelist <- Genelist$SYMBOL
+  Genelist <- subset(Genelist,!is.na(Genelist))
+  return(Genelist)
+}
+)
+```
+###5.3.2 
+```{r,fig.width=4,fig.height=3.5}
+GeneRank <- aggregateRanks(Genelist)
+GeneRank <- GeneRank[GeneRank$Name%in%Cluster3$Gene_name,]
+GeneRank$Order <- c(1:nrow(GeneRank))
+#
+plot_data_anno <- plot_data[,c("Gene_name","Cluster_new")]%>%unique()
+plot_data_anno$Cluster_new <- gsub(" .*$","",plot_data_anno$Cluster_new)
+plot_data_anno$Cluster_new <- gsub("luster","",plot_data_anno$Cluster_new)
+setkey(plot_data_anno,Gene_name)
+
+#
+GeneRank_anno <- head(GeneRank,n=10)
+GeneRank_anno$ENSEMBL <- mapIds(org.Mm.eg.db,keys=GeneRank_anno$Name,column="ENSEMBL",keytype="SYMBOL",multiVals="first")
+GeneRank_anno$Cluster <- plot_data_anno[GeneRank_anno$Name]$Cluster_new
+```
+##5.4.
+```{r}
+ggplot()+
+  geom_point(data = GeneRank,aes(x=Order,y=-log10(Score)))+
+  xlab("Gene Rank")+ylab("-log10 (RRA score)")+theme_bw()+
+  theme(panel.grid = element_blank(),legend.position = "none")+ggsci::scale_color_d3()+
+  geom_text_repel(aes(label=Name,x=Order,y=-log10(Score),color=Name),data = GeneRank_anno,alpha=.8,
+                  size=5,nudge_x = 6000,direction = "y", hjust ="right",
+                  arrow = arrow(length = unit(0.01, "npc")),
+                  box.padding = 1,point.padding = 1.1
+                  )+
+  geom_point(data = GeneRank_anno,aes(x=Order,y=-log10(Score),color=Name),size=2)
+```
+##5.5. 
+###5.5.1. 
+```{r}
+Matrix <- counts(dds_res,normalized=T)[head(GeneRank_anno$ENSEMBL,10),]
+setorder(sampleTable,Group)
+Matrix <- Matrix[,sampleTable$SampleName%>%as.character()]
+rownames(Matrix) <- head(GeneRank_anno$Name,10)
+#
+Matrix%<>%t()%>%scale()%>%t()
+DF <- sampleTable[,"Group",drop=FALSE]
+```
+###5.5.2. 
+```{r,fig.height=4,fig.width=5}
+p1 <- Heatmap(Matrix,cluster_columns = F,show_column_names = F,cluster_rows = F,show_row_names = T,row_names_side = "left",
+         col=circlize::colorRamp2(c(-2, 0, 2), c("#2166AC", "#F7F7F7", "#B2182B")),
+         top_annotation = HeatmapAnnotation(
+          foo = anno_block(gp = gpar(fill = c("#FEE0D2","#FCBBA1","#FC9272","#FB6A4A","#EF3B2C","#CB181D","#A50F15")),
+                           labels = c("N", "D3", "D5", "D7", "D9", "D11", "D13"), 
+          labels_gp = gpar(col = "white", fontsize = 10))),
+          column_split = rep(c(1:7),table(sampleTable$Group)),
+          column_title = c("","","","","","",""),
+          column_gap = unit(0,"cm")
+         )
+ha <-  HeatmapAnnotation(barplot = anno_barplot(-log10(GeneRank$Score[c(1:10)]), 
+                                                which = "row", 
+                                                gp= gpar(fill=c("red","black","black","black","black","black","black","black","black","black","black"))),which = "row")
+add_heatmap(p1, ha)
+```
+
+

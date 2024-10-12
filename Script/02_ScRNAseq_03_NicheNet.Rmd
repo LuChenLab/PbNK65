@@ -1,0 +1,67 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#1. loading package and data 
+##1.1. 
+```{r}
+library(nichenetr) 
+library(Seurat)
+library(tidyverse)
+library(magrittr)
+library(data.table)
+library(ggrepel)
+library(ggplot2)
+```
+##1.2.
+```{r}
+#
+sce.big <- readRDS("../01_Data/02_01_scedata.Rds")
+Data <- readRDS("../01_Data/02_01_scedata_Normaldata.Rds")
+UMAP <- readRDS("../01_Data/02_01_scedata_UMAP.Rds")
+PCA <- readRDS("../01_Data/02_01_scedata_PCA.Rds")
+#
+sce.big@assays$RNA@data <- Data
+sce.big@reductions$umap <- UMAP
+sce.big@reductions$pca <- PCA
+rm(Data,UMAP,PCA)
+#
+sce.big@assays$integrated <- sce.big@assays$RNA
+```
+#2. nichenetr
+##2.1. 
+```{r}
+sce.big <- alias_to_symbol_seurat(sce.big, "mouse")
+Idents(sce.big) <- "Celltype"
+```
+##2.2. 
+```{r}
+# The ligand_target_matrix, lr_network, and weighted_networks were downloaded from https://github.com/saeyslab/nichenetr
+nichenet_output <- nichenet_seuratobj_aggregate(
+  seurat_obj = sce.big,
+  receiver = c("Tcells"),
+  sender = c("Bcells", "NKs", "Neutros", "DCs", "Monos", "Macros", "AMs", "ECs", "Aeros", "EPC_AT1s", "EPC_AT2s", "Fibros", "Mesos", "LECs"), 
+  condition_colname = "Group",
+  condition_oi = "D8",
+  condition_reference = "CON",
+  expression_pct = 0.05,
+  ligand_target_matrix = ligand_target_matrix,
+  lr_network = lr_network,
+  weighted_networks = weighted_networks
+  )
+```
+##2.3. 
+```{r,fig.width=4.5,fig.height=4}
+Plot_data <- nichenet_output$ligand_activities%>%as.data.table()
+Plot_data_show <- head(Plot_data,n=6)
+ggplot(Plot_data)+geom_point(aes(x=auroc,y=aupr,color=rank))+
+  geom_text_repel(data = Plot_data_show,aes(x=auroc,y=aupr,color=rank,label=test_ligand),box.padding=unit(3,"mm"))+
+  theme_bw()+NoLegend()+
+  scale_color_distiller(palette = "Reds",direction = -1)
+```
+

@@ -1,0 +1,144 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#1. loading package and data
+##1.1. 
+```{r}
+library(Seurat)
+library(ggplot2)
+library(data.table)
+library(magrittr)
+library(ggpubr)
+library(ggrepel)
+library(dior)
+library(SeuratDisk)
+library(scRNAtoolVis)
+library(org.Mm.eg.db)
+library(dplyr)
+library(plyr)
+library(clusterProfiler)
+library(GseaVis)
+```
+##1.2.
+```{r}
+sce.big <- readRDS("../01_Data/02_01_scedata.Rds")
+Data <- readRDS("../01_Data/02_01_scedata_Normaldata.Rds")
+UMAP <- readRDS("../01_Data/02_01_scedata_UMAP.Rds")
+PCA <- readRDS("../01_Data/02_01_scedata_PCA.Rds")
+#
+sce.big@assays$RNA@data <- Data
+sce.big@reductions$umap <- UMAP
+sce.big@reductions$pca <- PCA
+rm(Data,UMAP,PCA)
+```
+#2. DEG analysis
+##2.1. 
+```{r}
+sce.big$Celltype_group <- paste0(sce.big$Group,"_",sce.big$Celltype)
+Idents(sce.big) <- "Celltype_group"
+```
+##2.2. 
+```{r}
+DE_res  <- mapply(function(x,y){
+ DE <- FindMarkers(sce.big,ident.1 = x,ident.2 = y,logfc.threshold = 0)
+ DE$Celltype <- gsub("D8_","",x)
+ return(DE)
+},paste0("D8","_",levels(sce.big$Celltype)),paste0("CON","_",levels(sce.big$Celltype)),SIMPLIFY = F
+)
+#
+DE_res  <- lapply(DE_res,function(x){
+  x$Gene <- rownames(x)
+  x%<>%as.data.table()
+  return(x)
+})
+```
+##2.3. 
+```{r}
+DE_res <- do.call(rbind,DE_res)
+DE_res%<>%mutate(Type=case_when(
+  p_val_adj > 0.05 ~"NoSig",
+  p_val_adj < 0.05 & avg_log2FC > .25 ~"Up",
+  p_val_adj < 0.05 & avg_log2FC < c(-.25) ~"Down"
+
+))
+DE_res$Entrez <- mapIds(org.Mm.eg.db,keys=DE_res$Gene,column="ENTREZID",keytype="SYMBOL",multiVals="first")
+```
+##2.4.
+```{r,fig.width=8.2,fig.height=4}
+#
+PlotData <- table(DE_res$Type,DE_res$Celltype)%>%as.data.table()
+PlotData <- subset(PlotData,V1!="NoSig")
+PlotData$Number <- PlotData$N
+PlotData[which(PlotData$V1=="Down")]$Number <- PlotData[which(PlotData$V1=="Down")]$Number*-1
+PlotData$V2 <- factor(PlotData$V2,levels = c("Tcells","Monos","Macros", "NKs",  "Neutros","AMs","Bcells", "DCs",
+                                             "ECs", "Fibros", "Aeros", "Mesos", "EPC_AT2s", "EPC_AT1s", "LECs"))
+PlotData$V1 <- factor(PlotData$V1,levels = c("Up","Down"))
+PlotData$Direction <- ifelse(PlotData$Number>=0,1,-1)
+PlotData$Position <- PlotData$Number + PlotData$Direction*60
+#
+PlotData$Group <- PlotData$V2
+PlotData$Group <- mapvalues(PlotData$Group,
+                            from = c("Tcells","Monos","Macros", "NKs",  "Neutros","AMs","Bcells", "DCs",
+                                     "ECs", "Fibros", "Aeros", "Mesos", "EPC_AT2s", "EPC_AT1s", "LECs"),
+                            to = c(rep("Immune cell",8),
+                                   rep("Non-immune cell",7)
+                                   )
+                              )
+
+ggplot(PlotData,mapping = aes(x=V2,y=Number))+geom_bar(mapping = aes(fill=V1),stat = "identity")+theme_bw()+theme(panel.grid = element_blank())+
+  scale_fill_manual(values = c("Up"="#D6604D","Down"="#4393C3"),name="Type")+geom_text(aes(x=V2,y=Position,label=N),size=6)+
+  theme(axis.text.x = element_text(angle = 45,hjust=.9,vjust = .9,size=13),
+        axis.text.y = element_text(size = 13),axis.title.y = element_text(size = 15),plot.title = element_text(hjust = .5,size = 20),
+        legend.position = c(.9,.8),legend.title = element_text(size=15),legend.text = element_text(size = 14),
+        strip.background.x = element_blank(),strip.text.x = element_text(size = 15)
+        )+
+  xlab("")+ylab("DEGs")+ylim(c(-1550,1250))+
+  facet_grid(.~Group,scales = "free",space = "free")
+```
+#3. Tcell DEG
+##3.1.
+```{r}
+setkey(DE_res,Celltype)
+Tcell <- DE_res[Celltype=="Tcells"]
+setorder(Tcell,-avg_log2FC)
+Tcell$Order <- c(1:nrow(Tcell))
+#
+DE_ori_up <- Tcell[Type=="Up"]
+setorder(DE_ori_up,-avg_log2FC)
+DE_ori_up <- DE_ori_up[c(1:5),]
+#
+DE_ori_Down <- Tcell[Type=="Down"]
+setorder(DE_ori_Down,avg_log2FC)
+DE_ori_Down <- DE_ori_Down[c(1:5),]
+DE_ori_label <- rbind(DE_ori_up,DE_ori_Down)
+```
+##3.2. 
+```{r}
+ggplot(Tcell,aes(x=Order,y=avg_log2FC))+geom_point(aes(color=avg_log2FC))+
+  theme_bw()+xlab("Rank")+
+  scale_color_gradient2(low = "#2166AC",mid = "#F7F7F7",high = "#B2182B",midpoint = 0)+
+  geom_text_repel(data = DE_ori_up,aes(x=Order,y=avg_log2FC,label=Gene,color=avg_log2FC),nudge_x = 100,size=5,point.padding = unit(4,"mm"),box.padding = unit(1,"mm"))+
+  geom_text_repel(data = DE_ori_Down,aes(x=Order,y=avg_log2FC,label=Gene,color=avg_log2FC),nudge_x =3000,size=5,point.padding = unit(4,"mm"),box.padding = unit(2,"mm"))+
+  ylim(c(-3,4.2))
+```
+#4. GSEA
+##4.1. 
+```{r}
+setorder(Tcell,-avg_log2FC)
+genelist <- Tcell$avg_log2FC
+names(genelist) <- Tcell$Entrez
+genelist <- subset(genelist,!is.na(genelist))
+GSEA_res <- gseGO(genelist,OrgDb = 'org.Mm.eg.db')
+```
+##4.2. 
+```{r,fig.width=5,fig.height=5}
+gseaNb(object = GSEA_res,geneSetID = grep("^response to interferon-gamma$",GSEA_res@result$Description,ignore.case = T))  
+```
+
+

@@ -1,0 +1,142 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+#1. loading package
+##1.1.
+```{r}
+library(Seurat)
+library(ggplot2)
+library(data.table)
+library(magrittr)
+library(ggpubr)
+library(ggrepel)
+library(SeuratDisk)
+library(scRNAtoolVis)
+library(plyr)
+library(patchwork)
+library(ggalluvial)
+```
+##1.2.
+```{r}
+#
+sce.big <- readRDS("../01_Data/02_01_scedata.Rds")
+#
+Data <- readRDS("../01_Data/02_01_scedata_Normaldata.Rds")
+UMAP <- readRDS("../01_Data/02_01_scedata_UMAP.Rds")
+PCA <- readRDS("../01_Data/02_01_scedata_PCA.Rds")
+#
+sce.big@assays$RNA@data <- Data
+sce.big@reductions$umap <- UMAP
+sce.big@reductions$pca <- PCA
+rm(Data,UMAP,PCA)
+```
+##1.3.
+```{r}
+sce.big$annocelltype <- mapvalues(sce.big$Celltype,from = levels(sce.big$Celltype),to = c(1:15))
+sce.big$Annocelltype <- mapvalues(sce.big$Celltype,from = levels(sce.big$Celltype),to = paste0(c(1:15),": ",levels(sce.big$Celltype)))
+#
+Cellcol <- c("#A3A184", "#85476B", "#D13694","#80EB9A","#E4B54D", "#E6E4D6", "#AEE6D6", "#82B368","#69EAD4", "#A6CEE3", "#FB9A99", "#CAB2D6","#DCAB85", "#B15928","#377EB8")
+names(Cellcol) <- levels(sce.big$annocelltype)
+#
+Cellcol1 <- Cellcol
+names(Cellcol1) <- levels(sce.big$Celltype)
+```
+#2. UMAP
+##2.1. 
+```{r,fig.width=5.5,fig.height=5}
+p1 <- scRNAtoolVis::clusterCornerAxes(sce.big,clusterCol =  "annocelltype",pSize = .4,cellLabel = T)+scale_color_manual(
+   values = Cellcol,
+   label=sce.big$Annocelltype%>%levels()
+)+ggtitle("")+theme(legend.text = element_text(size = 15))+NoLegend()
+#
+p2 <- scRNAtoolVis::clusterCornerAxes(sce.big,clusterCol =  "annocelltype",pSize = .4,cellLabel = T,nrow=1,
+                                noSplit=FALSE,groupFacet="Group")+
+   scale_color_manual(values = Cellcol,label=sce.big$Annocelltype%>%levels()
+)+ggtitle("")+theme(legend.text = element_text(size = 15))
+```
+##2.2. 
+```{r,fig.width=16,fig.height=6}
+p1+p2+plot_layout(widths = c(.35,.65))
+```
+#3. Markergene
+```{r,fig.width=20,fig.height=6}
+DotPlot(sce.big,
+        features = c("Ptprc",
+                     "Igkc","Cd79a", "Ighm", # "Ighm","Iglc2","Ly6d"
+                     "Cd3e","Cd3d","Cd3g",
+                     # "Il7r", "Ramp3","Rora",
+                     "Nkg7","Gzma","Ccl5",#"Prf1","Irf8",
+                     "S100a8","S100a9","Cxcl2",#"Retnlg","G0s2",
+                     "Itgax","Cd209a","Cd83","Cd74",
+                     "Lyz2","Csf1r","Apoe",
+                     "C1qa","C1qb","C1qc",
+                     "Chil3","Lpl","Ccl6", #"Ctsd","Ear2",
+                     "Cd93","Ptprb","Lyve1",#"Hpgd",
+                     "Emp2","Kdr","Igfbp7",#,"Car4","Cyp4b1",
+                     "Ager","Cldn18","Sec14l3",#,"Hopx",
+                     "Sftpa1","Sftpb","Sftpc",#"Sftpd","Cxcl15",
+                     "Mgp","Gpx3","Gsn",#"Apod",
+                     "Igfbp5","C3","Rarres2",#"Msln","Igfbp6",
+                     "Ccl21a","Mmrn1","Maf"#"Flt4","Gng11"
+                     ),cols = c("lightgrey", "red"),
+        group.by="Celltype")+xlab("")+ylab("")+
+   theme(axis.text.x = element_text(angle = 45,hjust=.9,vjust = .9,size=16),axis.text.y = element_text(size = 14))
+```
+#4. Cell percentage
+##4.1. 
+```{r,fig.width=3,fig.height=4}
+#
+plot_data <- sce.big@meta.data%>%as.data.table()
+#
+plot_data <- table(plot_data$Group,plot_data$Celltype)%>%as.data.frame()
+colnames(plot_data) <- c("group","X","value")
+plot_data%<>%as.data.table()
+
+#
+plot_data <- plot_data[,.(Ratio=value/sum(value),X=X),by=.(group)]
+
+#
+ggplot(plot_data, aes(x =group, y= Ratio, fill = X,
+                  stratum=X, alluvium=X)) + 
+  geom_col(width = 0.6, color='black')+
+  geom_flow(width=0.6,alpha=0.3, knot.pos=0)+
+  theme_classic() +
+  labs(x='Sample',y = 'Ratio')+scale_fill_manual(values = Cellcol1)+
+  scale_x_discrete(expand = c(0.05,0.05))+
+  theme(legend.title = element_blank())+
+  scale_y_continuous(expand = c(0,0),breaks = c(0.00,0.25,0.5,.75,1),labels = c("0%","25%","50%","75%","100%"))+
+  xlab("")+ylab("Cell percentage(%)")+
+  theme(axis.text.x =  element_text(size =14,angle = 45,hjust = .9,vjust = .9,color="black"),axis.text.y =  element_text(size =12,color="black"),axis.title = element_text(size = 15))
+```
+##4.2.
+```{r,fig.width=24,fig.height=12}
+PlotData <- table(sce.big$orig.ident,sce.big$Celltype)%>%as.data.frame()
+PlotData$Group <- gsub("_.*$","",PlotData$Var1)
+PlotData <- subset(PlotData,Group!="D12")
+PlotData$Group <- factor(PlotData$Group,levels = c("CON","D8"))
+PlotData%<>%as.data.table()
+PlotData <- split(PlotData,PlotData$Var1)
+PlotData <- lapply(PlotData,function(x){
+   y <- x[,.(Freq=Freq/sum(Freq),Sample=Var1,Celltype=Var2,Group=Group)]
+   return(y)
+})
+PlotData <- do.call(rbind,PlotData)
+#
+ggplot(PlotData,aes(x=Group,y=Freq))+geom_boxplot(aes(color=Group),width=.5)+
+      geom_jitter(aes(color=Group))+scale_color_brewer(palette = "Set1")+theme_bw()+
+      xlab("")+ylab("Cell percentage")+
+      theme(axis.title = element_text(size = 20),
+            axis.text = element_text(size = 20),
+            panel.grid = element_blank(),
+            strip.text.x = element_text(size = 20),
+            strip.background.x = element_blank()
+            )+
+      NoLegend()+stat_compare_means(method = "t.test",size=6)+
+      facet_wrap(vars(Celltype),nrow = 3,scales = "free")
+```
