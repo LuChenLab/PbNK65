@@ -26,7 +26,7 @@ The project includes raw count matrices and R scripts to analyze bulk RNA-seq, s
 - **02_ScRNAseq_01_Quantity.Rmd**: Quantification of immune cell types in scRNA-seq data.
 - **02_ScRNAseq_02_DEG.Rmd**: scRNA-seq differential expression analysis.
 - **02_ScRNAseq_03_NicheNet.Rmd**: Cell-cell communication analysis using [NicheNet](https://www.nature.com/articles/s41592-019-0667-5).
-- **03_SpatialData_01_CCA.Rmd**: Canonical correlation analysis (CCA) for spatial transcriptomics data.
+- **03_SpatialData_01_CCA.Rmd**: Batch Integration Using Canonical Correlation Analysis (CCA) for Spatial Transcriptomics Data.
 - **03_SpatialData_02_SubRegion.Rmd**: Sub-region analysis of spatial transcriptomics data.
 - **03_SpatialData_03_Deconvolution.Rmd**: Deconvolution of spatial transcriptomics data.
 
