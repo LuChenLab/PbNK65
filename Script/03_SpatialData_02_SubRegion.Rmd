@@ -126,7 +126,7 @@ Idents(sce.big) <- "Region"
 sce.big %<>% PrepSCTFindMarkers()
 DE_ori <- FindAllMarkers(sce.big,only.pos = T,logfc.threshold = 0)
 DE_ori%<>%as.data.table()
-DE_ori <- subset(DE_ori,p_val_adj<0.05 & abs(avg_log2FC)>0)
+DE_ori <- subset(DE_ori,p_val_adj<0.05)
 ```
 ##3.2.  
 ```{r}
