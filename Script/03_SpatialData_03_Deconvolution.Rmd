@@ -124,32 +124,36 @@ Data <- Data[colnames(sce.big),]
 stopifnot(rownames(Data)==colnames(sce.big))
 sce.big@meta.data <- cbind(sce.big@meta.data,Data)
 ```
-##3.2. 
-###3.2.1. 
+
+##3.2. Fig4.C
 ```{r,fig.width=6,fig.height=3.8}
 Plot_data <- sce.big@meta.data[,c("Region","Bcells","Tcells","NKs","Neutros","DCs","Monos","Macros","AMs","orig.ident")]
 Plot_data%<>%melt()
 Plot_data%<>%as.data.table()
 Plot_data <- Plot_data[Region=="Region2"]
 #
+# pdf("/mnt/raid61/Personal_data/yangqingxin/project/Plasmodium_chenshasha/Plot/V5/04_01_05_Percentage_Region2_diffcell.pdf",width = 6,height = 4)
+ggplot(Plot_data,aes(x=variable,y=value))+geom_violin(aes(fill=variable),scale = "width",adjust=2,size=.4)+
+  stat_summary(position = position_dodge(.9),size=.1)+
+  scale_fill_manual(values =  c("#A3A184", "#85476B", "#D13694","#80EB9A","#E4B54D", "#E6E4D6", "#AEE6D6", "#82B368","#69EAD4", "#A6CEE3", "#FB9A99", "#CAB2D6","#DCAB85", "#B15928","#377EB8"))+
+  theme_bw()+theme(panel.grid = element_blank())
+# dev.off()
+```
+
+##3.3. Fig4.D
+```{r,fig.width=6,fig.height=3.8}
+Plot_data <- sce.big@meta.data[,c("Region","Bcells","Tcells","NKs","Neutros","DCs","Monos","Macros","AMs","orig.ident")]
+Plot_data%<>%melt()
+Plot_data%<>%as.data.table()
+Plot_data <- Plot_data[Region=="Region2"]
 ggplot(Plot_data,aes(x=variable,y=value))+geom_violin(aes(fill=orig.ident),scale = "width")+
   stat_summary(aes(group=orig.ident),position = position_dodge(.9),size=.2)+
   scale_fill_manual(values = c("#E4B54D", "#82B368", "#AEE6D6"))+
   theme_bw()+theme(panel.grid = element_blank())+
   stat_compare_means(aes(group = variable), comparisons = list(c("Infect", "Infect_IfngrKO")), method = "wilcox.test")
 ```
-###3.2.2.  
-```{r,fig.width=10,fig.height=3.8}
-Plot_data <- sce.big@meta.data[,c("Region","Bcells","Tcells","NKs","Neutros","DCs","Monos","Macros","AMs","orig.ident")]
-Plot_data%<>%melt()
-Plot_data%<>%as.data.table()
-#
-ggplot(Plot_data,aes(x=variable,y=value))+geom_violin(aes(fill=Region),scale = "width")+
-  stat_summary(aes(group=Region),position = position_dodge(.9),size=.1)+
-  scale_fill_manual(values =  c("#C497B2","#D8383A","#14517C", "#E7EFFA", "#96C37D", "#F3D266", "#2F7FC1", "#F8F3F9","#A9B8C6","#F7E1ED"))+
-  theme_bw()+theme(panel.grid = element_blank())
-```
-##3.3.
+
+##3.4. Fig4.E
 ```{r,fig.width=4,fig.height=4}
 Plot_data <- sce.big@meta.data%>%as.data.table()
 Plot_data$Type <- "Separation"
@@ -172,6 +176,8 @@ P <- P$p.value
 
 #
 plot_data <- plot_data[,.(Ratio=value/sum(value),X=X),by=.(group)]
+
+#
 ggplot(plot_data, aes(x =group, y= Ratio, fill = X,
                   stratum=X, alluvium=X)) + 
   geom_col(width = 0.6, color='black')+
