@@ -91,15 +91,15 @@ ggplot(Plot)+
   geom_point_rast(aes(x=log2FoldChange,y=-log10(padj),color=Type),size=.5)+
   facet_grid(.~cluster,scales = "free")+
   geom_text_repel(data = Plot_anno[Type=="Up"],aes(x=log2FoldChange,y=-log10(padj),label=SYMBOL),
-                   nudge_x = 100,   # 标签在x轴上的起始位置，与x轴的数据单位相同
-                   direction = "y",  # 排列方向
+                   nudge_x = 100,  
+                   direction = "y", 
                    force = 1,
                    nudge_y = 0.00001,
                    hjust= 1,size=5
                   )+
   geom_text_repel(data = Plot_anno[Type=="Down"],aes(x=log2FoldChange,y=-log10(padj),label=SYMBOL),
-                   nudge_x = -100,   # 标签在x轴上的起始位置，与x轴的数据单位相同
-                   direction = "y",  # 排列方向
+                   nudge_x = -100, 
+                   direction = "y",
                    force = 10,
                    hjust= 1,size=5,
                    box.padding = unit(.1,"cm")
@@ -152,12 +152,7 @@ GO_simple <- clusterProfiler::simplify(Go)
 ```
 ##5.2.
 ```{r,fig.width=8.5,fig.height=8}
-GO_simple@compareClusterResult <- GO_simple@compareClusterResult[
-  -which(GO_simple@compareClusterResult$Description%in%c("defense response to bacterium","nuclear division","nuclear chromosome segregation",
-                                                         "chromosome segregation","defense response to virus","response to virus",
-                                                         "cellular response to interferon-beta","mitotic sister chromatid segregation")),]
-#
-Data <- enrichplot::dotplot(GO_simple, showCategory=4,font.size=8,includeAll=F)
+Data <- enrichplot::dotplot(GO_simple, showCategory=11,font.size=8,includeAll=F)
 Data <- Data$data
 #
 ggplot(Data)+geom_point(aes(x=Cluster,y=Description,color=-log10(p.adjust),size=GeneRatio))+
