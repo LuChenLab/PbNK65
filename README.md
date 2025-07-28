@@ -38,3 +38,9 @@ The project includes raw count matrices and R scripts to analyze bulk RNA-seq, s
 - **03_SpatialData_03_Deconvolution.Rmd**: Deconvolution of spatial transcriptomics data.
 
 ---
+
+## Cite This Repository
+
+If you use the **data** or **code** from this repository in your work, please cite this repository:
+
+> This repository accompanies a manuscript currently under peer review. Citation details will be updated upon publication.
