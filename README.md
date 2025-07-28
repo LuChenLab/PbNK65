@@ -1,10 +1,17 @@
-# Joint analysis of bulk RNA-seq, scRNA-seq, and spatial transcriptomics in MA-ARDS
+# Transcriptomic profiling of Plasmodium-induced lung pathology
 
-The project involves a multi-dimensional transcriptomic analysis to uncover key immune cells in Malaria-associated Acute Respiratory Distress Syndrome (MA-ARDS). Our analysis includes bulk RNA-seq data from different time points, scRNA-seq data pre- and post-infection, and spatial transcriptomic data. We provide quantitative transcriptomic data across all dimensions in this repository.
+This repository supports a study investigating the immune mechanisms underlying **Plasmodium-induced lung injury**, focusing on the role of **IFN-γ signaling in T cells** and its impact on **T cell–monocyte interactions** and pulmonary pathology.
+
+- **Bulk RNA-seq** and **spatial transcriptomics** were performed on a murine *Plasmodium* lung infection model to characterize temporal and spatial dynamics of immune responses.
+- **scRNA-seq data** from a MA-ARDS model were used as a complementary approach to validate immune cell subsets and regulatory interactions.
+
+The datasets provided here enable comprehensive, multi-dimensional exploration of the host immune landscape during *Plasmodium* infection.
+
+---
 
 # Script guidance
 
-The project includes raw count matrices and R scripts to analyze bulk RNA-seq, single-cell RNA-seq, and spatial transcriptomics data. We provide data from multiple time points, as well as pre- and post-infection conditions, to allow comprehensive exploration of immune responses in MA-ARDS.
+The project includes raw count matrices and R scripts to analyze bulk RNA-seq, single-cell RNA-seq, and spatial transcriptomics data. We provide data from multiple time points, as well as pre- and post-infection conditions, to allow comprehensive exploration of immune responses in **Plasmodium-induced lung injury**.
 
 ---
 
