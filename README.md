@@ -50,5 +50,5 @@ Data include multiple time points, as well as pre- and post-infection conditions
 
 If you use the **data** or **code** from this repository, please cite as:
 
-> This repository accompanies a manuscript currently under peer review. Citation details will be updated upon publication.
+> Chen S, Yang Q, Zhong Y, Liu D, Zhou L, Wei H, Li C,Song J, Wang Y, Hu X, Chen L, Lin J.0.Comprehensive immune profiling reveals IFN-γ signaling in T cells mediates parasite phagocytosis in a rodent malaria model. mBio0:e03938-25.https://doi.org/10.1128/mbio.03938-25.
 
